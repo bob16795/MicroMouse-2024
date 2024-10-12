@@ -11,67 +11,98 @@ const double wheelRPM = 100;    // Wheel speed in RPM
 const double turnFac = 0.5; 
 const double wheelBase = 11.5;    // Turning adjustment factor
 
+const int TOTAL_BACK_STEPS = 5;
+
 void setup() {
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
   Serial.begin(9600);
+
   // Set motor pins as outputs
   pinMode(motor1pin1, OUTPUT);
   pinMode(motor1pin2, OUTPUT);
   pinMode(motor2pin1, OUTPUT);
   pinMode(motor2pin2, OUTPUT);
+  
+  // not exactly sure if this is right,
+  // assuming there can be multiple start dirs
+  // might be able to move to loop, idk if it matters though bc it only solves the maze once
+  for (int i = 0; i < 4; i ++) {
+    if (checkHall()) break;
+    turnleft(90);
+  }
 }
 
 void loop() {
-  start();
+  // unused
 }
 
-void start(){
-  int distance = read();
-  makeDec(distance);
-  delay(100);
-}
-
-
-void solveMaze() {
+bool checkHall() {
   const int WALL_THRESHOLD = 10; // Distance to consider as a wall (in cm)
   const int FORWARD_SPEED = 100; // Adjust as needed
   const int TURN_SPEED = 50; // Adjust as needed
 
-  while (true) {
-    setSpeed(FORWARD_SPEED);
-    
-    if (read() > WALL_THRESHOLD) {
-      // No wall in front, keep going
-      delay(100);
-    } else {
-      // Wall in front, try to turn right
-      setSpeed(0);
-      turnRight(90);
-      
-      if (read() > WALL_THRESHOLD) {
-        // Right turn possible, continue
-        delay(100);
-      } else {
-        // Can't turn right, try left
-        turnLeft(180);
-        
-        if (read() > WALL_THRESHOLD) {
-          // Left turn possible, continue
-          delay(100);
-        } else {
-          // Dead end, turn around
-          turnRight(90);
-        }
-      }
-    }
+  // Go down path forward
+  const int foward_start = millis();
+  setSpeed(FORWARD_SPEED);
+  while (read() > WALL_THRESHOLD)
+    delay(100);
+  setspeed(0);
+
+  const int foward_time = millis() - forward_start;
+
+  if (isGoalReached())
+    return true;
+
+  // look left
+  turnleft(90);
+
+  // check the left hall (if it exists)
+  if (read() > WALL_THRESHOLD)
+    if (checkHall()) return true;
   
-    // Check if we've reached the goal
-    // if (isGoalReached()) {
-    //   setSpeed(0);
-    //   break;
-    // }
+  // look right
+  turnleft(180);
+
+  // check the right hall (if it exists)
+  if (read() > WALL_THRESHOLD)
+    if (checkHall()) return true;
+
+  // Those two halls didnt have the exit so we have to
+  // backtrack a bit and then check for new halls
+  int total_back_time = 0;
+  int steps = TOTAL_BACK_STEPS;
+
+  // tbh problaby bad to backtrack depending on motor accuracy
+  while (total_back_time > 0) {
+    // time some stuff to track
+    const int tmp_timer = millis();
+    setSpeed(FORWARD_SPEED);
+    delay(100);
+    total_back_time += millis() - tmp_timer;
+
+    if (read() > WALL_THRESHOLD) {
+      setspeed(0);
+      break;
+    }
+    
+    if (!(steps--)) {
+      steps = TOTAL_BACK_STEPS;
+      setspeed(0);
+
+      // check the left hall (if it exists)
+      turnleft(90);
+      if (read() > WALL_THRESHOLD)
+        if (checkHall()) return true;
+      
+      // check the right hall (if it exists)
+      turnleft(180);
+      if (read() > WALL_THRESHOLD)
+        if (checkHall()) return true;
+    }
   }
+
+  return false;
 }
 
 void setSpeed(int sp) {
